@@ -1,0 +1,6 @@
+{
+  "name": "validationcheck-status",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=24 <25" }
+}
