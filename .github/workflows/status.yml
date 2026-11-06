@@ -1,0 +1,61 @@
+# Public status page (status.validationcheck.net), deliberately off Cloudflare: every hour this
+# runs test-mode synthetic checks against production and publishes the page to GitHub Pages
+# (gh-pages branch). Needs the repository secret VC_TEST_KEY (a production vc_test_ key).
+# GitHub may run scheduled workflows a few minutes late under load.
+name: Status page
+
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ["scripts/status/**"]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: status-page
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: scripts/status
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Get the published site (history)
+        run: |
+          if git ls-remote --exit-code --heads origin gh-pages >/dev/null; then
+            git clone --depth 1 --branch gh-pages "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" site
+          else
+            mkdir site && git -C site init -b gh-pages && git -C site remote add origin "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git"
+          fi
+
+      - name: Run synthetic checks
+        env:
+          VC_TEST_KEY: ${{ secrets.VC_TEST_KEY }}
+        run: npx --yes tsx@4.21.0 scripts/status/synthetic-check.ts > run.json
+
+      - name: Build the page
+        run: npx --yes tsx@4.21.0 scripts/status/build-page.ts run.json site
+
+      - name: Publish
+        run: |
+          cd site
+          git config user.name "status-bot"
+          git config user.email "status-bot@users.noreply.github.com"
+          # One commit, replaced each run, so the branch doesn't grow with every check.
+          git checkout -q --orphan next
+          git add -A
+          git commit -q -m "Status page"
+          git branch -M next gh-pages
+          git push -q --force origin gh-pages
