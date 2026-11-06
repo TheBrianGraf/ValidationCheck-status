@@ -14,7 +14,6 @@ on:
 
 permissions:
   contents: write
-  pages: write
 
 concurrency:
   group: status-page
@@ -61,12 +60,5 @@ jobs:
           git branch -M next gh-pages
           git push -q --force origin gh-pages
 
-      - name: Enforce HTTPS when GitHub finishes certificate provisioning
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          if curl --fail --silent --show-error --head --max-time 20 https://status.validationcheck.net/ >/dev/null 2>&1; then
-            gh api "repos/$GITHUB_REPOSITORY/pages" --method PUT -F https_enforced=true
-          else
-            echo 'Valid custom-domain TLS is not available yet; the next hourly run will retry.'
-          fi
+      - name: Verify status-site HTTPS
+        run: curl --fail --silent --show-error --head --max-time 20 https://status.validationcheck.net/
